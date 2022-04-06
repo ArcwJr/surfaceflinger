@@ -125,17 +125,7 @@ public:
     }
 
     void setupScheduler() {
-        std::vector<scheduler::RefreshRateConfigs::InputConfig> configs{{/*hwcId=*/0, 16666667}};
-        mFlinger.mutableRefreshRateConfigs() =
-                std::make_unique<scheduler::RefreshRateConfigs>(/*refreshRateSwitching=*/false,
-                                                                configs,
-                                                                /*currentConfig=*/0);
-        mFlinger.mutableRefreshRateStats() =
-                std::make_unique<scheduler::RefreshRateStats>(*mFlinger.mutableRefreshRateConfigs(),
-                                                              *mFlinger.mutableTimeStats(),
-                                                              /*currentConfig=*/0,
-                                                              /*powerMode=*/HWC_POWER_MODE_OFF);
-        mScheduler = new TestableScheduler(*mFlinger.mutableRefreshRateConfigs());
+        mScheduler = new TestableScheduler(mFlinger.mutableRefreshRateConfigs());
         mScheduler->mutableEventControlThread().reset(mEventControlThread);
         mScheduler->mutablePrimaryDispSync().reset(mPrimaryDispSync);
         EXPECT_CALL(*mEventThread.get(), registerDisplayEventConnection(_));
@@ -827,7 +817,7 @@ struct ColorLayerVariant : public BaseLayerVariant<LayerProperties> {
     static FlingerLayerType createLayer(CompositionTest* test) {
         FlingerLayerType layer = Base::template createLayerWithFactory<ColorLayer>(test, [test]() {
             return new ColorLayer(LayerCreationArgs(test->mFlinger.mFlinger.get(), sp<Client>(),
-                                                    String8("test-layer"), LayerProperties::WIDTH,
+                                                    String8("test-layer"), String8(""), LayerProperties::WIDTH,
                                                     LayerProperties::HEIGHT,
                                                     LayerProperties::LAYER_FLAGS, LayerMetadata()));
         });
@@ -868,7 +858,7 @@ struct BufferLayerVariant : public BaseLayerVariant<LayerProperties> {
                 Base::template createLayerWithFactory<BufferQueueLayer>(test, [test]() {
                     return new BufferQueueLayer(
                             LayerCreationArgs(test->mFlinger.mFlinger.get(), sp<Client>(),
-                                              String8("test-layer"), LayerProperties::WIDTH,
+                                              String8("test-layer"), String8(""), LayerProperties::WIDTH,
                                               LayerProperties::HEIGHT,
                                               LayerProperties::LAYER_FLAGS, LayerMetadata()));
                 });

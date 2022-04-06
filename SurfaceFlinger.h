@@ -232,8 +232,6 @@ public:
 
     static bool useContextPriority;
 
-    static bool sDirectStreaming;
-
     // The data space and pixel format that SurfaceFlinger expects hardware composer
     // to composite efficiently. Meaning under most scenarios, hardware composer
     // will accept layers with the data space and pixel format.
@@ -332,6 +330,9 @@ public:
 
     // Inherit from ClientCache::ErasedRecipient
     void bufferErased(const client_cache_t& clientCacheId) override;
+
+    status_t enterSelf();
+    status_t exitSelf();
 
 private:
     friend class BufferLayer;
@@ -448,7 +449,7 @@ private:
                                 HdrCapabilities* outCapabilities) const override;
     status_t enableVSyncInjections(bool enable) override;
     status_t injectVSync(nsecs_t when) override;
-    status_t getLayerDebugInfo(std::vector<LayerDebugInfo>* outLayers) override;
+    status_t getLayerDebugInfo(std::vector<LayerDebugInfo>* outLayers) const override;
     status_t getColorManagement(bool* outGetColorManagement) const override;
     status_t getCompositionPreference(ui::Dataspace* outDataspace, ui::PixelFormat* outPixelFormat,
                                       ui::Dataspace* outWideColorGamutDataspace,
@@ -536,6 +537,9 @@ private:
     // called on the main thread in response to setPowerMode()
     void setPowerModeInternal(const sp<DisplayDevice>& display, int mode) REQUIRES(mStateLock);
 
+    // Query the Scheduler or allowed display configs list for a matching config, and set it
+    void setPreferredDisplayConfig() REQUIRES(mStateLock);
+
     // called on the main thread in response to setAllowedDisplayConfigs()
     void setAllowedDisplayConfigsInternal(const sp<DisplayDevice>& display,
                                           const std::vector<int32_t>& allowedConfigs)
@@ -557,7 +561,6 @@ private:
     void commitInputWindowCommands() REQUIRES(mStateLock);
     void setInputWindowsFinished();
     void updateCursorAsync();
-    void initScheduler(DisplayId primaryDisplayId);
 
     /* handlePageFlip - latch a new buffer if available and compute the dirty
      * region. Returns whether a new buffer has been latched, i.e., whether it
@@ -601,25 +604,25 @@ private:
     /* ------------------------------------------------------------------------
      * Layer management
      */
-    status_t createLayer(const String8& name, const sp<Client>& client, uint32_t w, uint32_t h,
+    status_t createLayer(const String8& name, const String8& systemname, const sp<Client>& client, uint32_t w, uint32_t h,
                          PixelFormat format, uint32_t flags, LayerMetadata metadata,
                          sp<IBinder>* handle, sp<IGraphicBufferProducer>* gbp,
                          const sp<IBinder>& parentHandle, const sp<Layer>& parentLayer = nullptr);
 
-    status_t createBufferQueueLayer(const sp<Client>& client, const String8& name, uint32_t w,
+    status_t createBufferQueueLayer(const sp<Client>& client, const String8& name, const String8& systemname, uint32_t w,
                                     uint32_t h, uint32_t flags, LayerMetadata metadata,
                                     PixelFormat& format, sp<IBinder>* outHandle,
                                     sp<IGraphicBufferProducer>* outGbp, sp<Layer>* outLayer);
 
-    status_t createBufferStateLayer(const sp<Client>& client, const String8& name, uint32_t w,
+    status_t createBufferStateLayer(const sp<Client>& client, const String8& name, const String8& systemname, uint32_t w,
                                     uint32_t h, uint32_t flags, LayerMetadata metadata,
                                     sp<IBinder>* outHandle, sp<Layer>* outLayer);
 
-    status_t createColorLayer(const sp<Client>& client, const String8& name, uint32_t w, uint32_t h,
+    status_t createColorLayer(const sp<Client>& client, const String8& name,  const String8& systemname, uint32_t w, uint32_t h,
                               uint32_t flags, LayerMetadata metadata, sp<IBinder>* outHandle,
                               sp<Layer>* outLayer);
 
-    status_t createContainerLayer(const sp<Client>& client, const String8& name, uint32_t w,
+    status_t createContainerLayer(const sp<Client>& client, const String8& name, const String8& systemname, uint32_t w,
                                   uint32_t h, uint32_t flags, LayerMetadata metadata,
                                   sp<IBinder>* outHandle, sp<Layer>* outLayer);
 
@@ -664,9 +667,6 @@ private:
                                      bool forSystem, int* outSyncFd, bool& outCapturedSecureLayers);
     void traverseLayersInDisplay(const sp<const DisplayDevice>& display,
                                  const LayerVector::Visitor& visitor);
-
-    bool canAllocateHwcDisplayIdForVDS(uint64_t usage);
-    bool skipColorLayer(const char* layerType);
 
     sp<StartPropertySetThread> mStartPropertySetThread;
 
@@ -1138,8 +1138,8 @@ private:
     sp<Scheduler::ConnectionHandle> mAppConnectionHandle;
     sp<Scheduler::ConnectionHandle> mSfConnectionHandle;
 
-    std::unique_ptr<scheduler::RefreshRateConfigs> mRefreshRateConfigs;
-    std::unique_ptr<scheduler::RefreshRateStats> mRefreshRateStats;
+    scheduler::RefreshRateConfigs mRefreshRateConfigs;
+    scheduler::RefreshRateStats mRefreshRateStats{mRefreshRateConfigs, *mTimeStats};
 
     // All configs are allowed if the set is empty.
     using DisplayConfigs = std::set<int32_t>;
